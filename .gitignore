@@ -1,0 +1,15 @@
+# --- Jupyter Notebooks ---
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.pylintrc
+
+# --- Datos ---
+*.fits
+*.fit
+*.csv
