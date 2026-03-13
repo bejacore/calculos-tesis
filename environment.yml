@@ -1,0 +1,5 @@
+name: null
+channels:
+  - http://ssb.stsci.edu/astroconda
+  - defaults
+prefix: /Users/carlosabej/repos/calculos-tesis/env
