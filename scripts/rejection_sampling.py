@@ -141,6 +141,14 @@ def fit_king_profile(radii, densities):
 # ==============================================================================
 # REJECTION SAMPLING
 # ==============================================================================
+def prob_Z_given_R(Z, R, rc, rt, k):
+    """Implementación de la probabilidad derivada P(Z | X, Y)."""
+    r = np.sqrt(R**2 + Z**2)
+    rho = king_spatial_density(r, rc, rt, k)
+    
+    # P(Z) proporcional a r^2 * rho(r) * (|Z| / r) = r * rho(r) * |Z|
+    return r * rho * np.abs(Z)
+
 def rejection_sampling(R, rc, rt, k):
     """
     Realiza el muestreo de rechazo para obtener las coordenadas Z de las 
@@ -153,9 +161,12 @@ def rejection_sampling(R, rc, rt, k):
     # Se descartan las estrellas con R >= rt (no pertenecen al modelo)
     pending = R < rt 
     
-    # 1. Se calcula el rho máximo (ocurre en el centro del cúmulo, r = 0)
-    # Se usa como techo para la variable uniforme 'u'
-    rho_max = king_spatial_density(np.array([0.0]), rc, rt, k)[0]
+    # El máximo de la función ocurre cuando R=0, lo que equivale a maximizar 
+    # r^2 * rho(r).
+    # Evaluamos un grid fino de r entre 0 y rt para encontrar este techo.
+    r_grid = np.linspace(0, rt, 5000)
+    P_grid = (r_grid**2) * king_spatial_density(r_grid, rc, rt, k)
+    P_global_max = np.max(P_grid)
 
     while np.any(pending):
         # Se obtienen las estrellas que aún no han sido aceptadas
@@ -171,16 +182,13 @@ def rejection_sampling(R, rc, rt, k):
         Z_cand = np.random.uniform(-Z_max, Z_max, size=n_pending)
         
         # 4. Se calcula el radio 3D (r) para los Z candidatos
-        r_cand = np.sqrt(R_pending**2 + Z_cand**2)
+        P_cand = prob_Z_given_R(Z_cand, R_pending, rc, rt, k)
         
-        # 5. Se evalúa la densidad espacial (rho) en r_cand
-        rho_cand = king_spatial_density(r_cand, rc, rt, k)
-        
-        # 6. Muestreo de rechazo: Se generan 'u' usando el rho máximo
-        u = np.random.uniform(0.0, rho_max, size=n_pending)
+        # 6. Muestreo de rechazo: Se generan 'u' usando el máximo global de P(Z|R)
+        u = np.random.uniform(0.0, P_global_max, size=n_pending)
         
         # 7. Condición de aceptación: si u < rho(cand), la muestra es válida
-        accept = u < rho_cand
+        accept = u < P_cand
         
         # 8. Se actualizan los candidatos aceptados
         # Se obtiene los índices globales de las estrellas que estaban pendientes
@@ -240,7 +248,27 @@ def process_cluster_data(clusters_table, members_table):
     Z_matrix = build_z_matrix(Rs, rc, rt, k, len(Rs), M_realization=1)
     idx, labels = get_stars_labels(Rs_centers, rc, rt)
 
-    make_plots(Z_matrix, idx, labels, rt)
+    # make_plots(Z_matrix, idx, labels, rt)
+
+    plt.figure(figsize=(10, 6))
+
+    Z_max = np.sqrt(max(0, rt**2 - Rs[0]**2))
+
+    Z = np.linspace(-Z_max, Z_max, 500)
+
+    P_Z = prob_Z_given_R(Z, Rs[0], rc, rt, k)
+
+    plt.plot(Z, P_Z, label=f'$R = {Rs[0]}$')
+    
+    plt.title('Probabilidad $P(Z | R)$ ')
+    plt.xlabel('$Z$')
+    plt.ylabel('$P(Z)$ (No normalizada)')
+    plt.axvline(0, color='black', linestyle='--', alpha=0.3) # Línea central en Z=0
+    plt.legend()
+    plt.grid(True, alpha=0.4)
+    plt.tight_layout()
+
+    plt.show()
 
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
