@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
+from scipy.integrate import quad
 from scipy.integrate import cumulative_trapezoid
 
 # ==============================================================================
@@ -245,6 +246,69 @@ def build_z_matrix(Rs, rc, rt, k, N_stars, M_realization=100):
     return Z_matrix
 
 # ==============================================================================
+# CALCULOS EN LAS TRES DIMESIONES
+# ==============================================================================
+def calculate_velocity_dispersion(X, Y, Z, M_star, num_bins=20):
+    '''
+    Calcula la dispersión de velocidades a partir de la densidad espacial de 
+    masa y la masa acumulada.
+    '''
+    # Constante gravitacional G (pc * M_sun^-1 * (km/s)^2)
+    G = 4.3009e-3 
+    
+    # Se calculan los radios y se ordenan
+    r = np.sqrt(X**2 + Y**2 + Z**2)
+    sort_idx = np.argsort(r)
+    r_sorted = r[sort_idx]
+    M_sorted = M_star[sort_idx]
+
+    # Masa acumulada exacta por estrella
+    M_cum_exact = np.cumsum(M_sorted)
+
+    # Se definen cascarones esféricos (bins radiales)
+    r_bins = np.linspace(np.min(r_sorted), np.max(r_sorted), num_bins + 1)
+    r_centers = (r_bins[1:] + r_bins[:-1]) / 2
+
+    # Se inicializan los arrays para los perfiles
+    rho_bins = np.zeros(num_bins)
+    M_cum_bins = np.zeros(num_bins)
+
+    for i in range(num_bins):
+        # Máscara para las estrellas que caen dentro del cascarón actual
+        in_bin = (r_sorted >= r_bins[i]) & (r_sorted < r_bins[i+1])
+        
+        # Volumen del cascarón esférico
+        volumen = (4/3) * np.pi * (r_bins[i+1]**3 - r_bins[i]**3)
+        
+        # Densidad = Masa en el bin / volumen
+        rho_bins[i] = np.sum(M_sorted[in_bin]) / volumen
+        
+        # Masa acumulada hasta el centro del bin
+        idx_center = np.searchsorted(r_sorted, r_centers[i])
+        if idx_center < len(M_cum_exact):
+            M_cum_bins[i] = M_cum_exact[idx_center]
+        else:
+            M_cum_bins[i] = M_cum_exact[-1]
+
+    # Se evitan divisiones por cero en zonas vacías
+    rho_bins[rho_bins == 0] = np.nan 
+
+    # Se construye el integrando: rho(r) * G * M(<r) / r^2
+    integrando = rho_bins * G * M_cum_bins / r_centers**2
+
+    # Se calcula la integral acumulada de 0 a r
+    # (Se usa initial=0 para mantener la misma longitud del array)
+    integral_0_r = cumulative_trapezoid(integrando, x=r_centers, initial=0)
+    
+    # La integral de r a R_max es la integral total menos la integral hasta r
+    integral_r_inf = integral_0_r[-1] - integral_0_r
+
+    # Se calcula la dispersión de velocidades al cuadrado
+    sigma_cuadrado = integral_r_inf / rho_bins
+
+    return r_centers, rho_bins, np.sqrt(sigma_cuadrado)
+
+# ==============================================================================
 # PROCESAMIENTO DE DATOS
 # ==============================================================================
 def process_cluster_data(clusters_table, members_table):
@@ -265,6 +329,7 @@ def process_cluster_data(clusters_table, members_table):
 
     ras = cluster_members['RA_ICRS'].values
     decs = cluster_members['DE_ICRS'].values
+    Ms = cluster_members['Mass50'].values
 
     angular_dist = angular_distances(ra0, dec0, ras, decs)
     Rs = angular_dist * d0
@@ -275,12 +340,13 @@ def process_cluster_data(clusters_table, members_table):
     X, Y = tangent_plane_projection(ras, decs, ra0, dec0, d0)
     Z_samples = rejection_sampling(Rs, rc, rt, k)
 
+    rs, rhos_m, sigma_v = calculate_velocity_dispersion(X, Y, Z_samples, Ms)
+
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
 # ==============================================================================
 if __name__ == "__main__":
     clusters_table = 'data/processed/clusters.csv'
-    members_table = 'data/processed/members.csv'
+    members_table = 'data/processed/members_with_estimated_masses.csv'
     
     process_cluster_data(clusters_table, members_table)
-    
