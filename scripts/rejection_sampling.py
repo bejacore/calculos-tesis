@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
-from scipy.integrate import quad
 from scipy.integrate import cumulative_trapezoid
 
 # ==============================================================================
@@ -30,7 +29,6 @@ def tangent_plane_projection(ras, decs, ra0, dec0, d0):
     """
     Proyecta las coordenadas (ras, decs) al plano tangente centrado en (ra0, dec0).
     """
-
     ras = np.radians(ras)
     decs = np.radians(decs)
 
@@ -61,61 +59,6 @@ def bin_superficial_density(radii, num_bins=30):
     sigma_obs = counts / areas
 
     return bin_centers, sigma_obs
-
-def get_stars_labels(Rs, rc, rt):
-    """
-    Selecciona índices de estrellas representativas para las posiciones clave en 
-    el cúmulo.
-    """
-    idx = [
-        np.argmin(np.abs(Rs - 0.1)),
-        np.argmin(np.abs(Rs - rc)),
-        np.argmin(np.abs(Rs - rt/2)),
-        np.argmin(np.abs(Rs - 0.95*rt))
-    ]
-
-    labels = [
-        f'Estrella en Núcleo (R={Rs[idx[0]]:.2f} pc)',
-        f'Estrella en $r_c$ (R={Rs[idx[1]]:.2f} pc)',
-        f'Estrella en Intermedia (R={Rs[idx[2]]:.2f} pc)',
-        f'Estrella en Borde (R={Rs[idx[3]]:.2f} pc)'
-    ]
-
-    return idx, labels
-
-def make_plots(Z_matrix, idx, labels, rt):
-    """
-    Realiza los histogramas de la distribución marginal P(Z) y las 
-    distribuciones condicionales P(Z|X,Y) para las estrellas seleccionadas.
-    """
-    plt.figure(figsize=(8, 5))
-
-    Z_total = Z_matrix.flatten()
-
-    plt.hist(Z_total, bins=100, density=True, color='gray', alpha=0.7, edgecolor='black')
-    plt.title('Distribución de Probabilidad Marginal $P(Z)$ del cúmulo King 11')
-    plt.xlabel('Z [pc]')
-    plt.ylabel('Densidad de Probabilidad')
-    plt.grid(True, alpha=0.3)
-    plt.show()
-
-    colors = ['blue', 'green', 'orange', 'red']
-    fig, axs = plt.subplots(2, 2, figsize=(12, 10), sharex=True)
-    axs = axs.flatten()
-
-    for i, idx_star in enumerate(idx):
-        Z_star = Z_matrix[idx_star, :]
-    
-        axs[i].hist(Z_star, bins=40, density=True, color=colors[i], alpha=0.7, edgecolor='black')
-        axs[i].set_title(labels[i])
-        axs[i].set_xlabel('Z [pc]')
-        axs[i].set_ylabel('$P(Z | X, Y)$')
-        axs[i].grid(True, alpha=0.3)
-
-        axs[i].set_xlim(-rt, rt)
-
-    plt.tight_layout()
-    plt.show()
 
 # ==============================================================================
 # MODELO DE KING
@@ -231,19 +174,6 @@ def rejection_sampling(R, rc, rt, k):
         pending[idx_accepted] = False
         
     return Z_accepted
-
-def build_z_matrix(Rs, rc, rt, k, N_stars, M_realization=100):
-    """
-    Construye una matriz de dimensiones (N_stars, M_realization) con las 
-    coordenadas Z obtenidas por muestreo de rechazo para cada estrella y cada 
-    realización.
-    """
-    Z_matrix = np.zeros((N_stars, M_realization))
-    
-    for i in range(M_realization):
-        Z_matrix[:, i] = rejection_sampling(Rs, rc, rt, k)
-    
-    return Z_matrix
 
 # ==============================================================================
 # CALCULOS EN LAS TRES DIMESIONES
