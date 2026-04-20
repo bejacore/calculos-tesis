@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
+from scipy.integrate import cumulative_trapezoid
 
 # ==============================================================================
 # FUNCIONES AUXILIARES
@@ -23,6 +24,32 @@ def angular_distances(ra0, dec0, ras, decs):
     c = 2 * np.arcsin(np.sqrt(a))
 
     return c
+
+def tangent_plane_projection(ras, decs, ra0, dec0, d0):
+    """
+    Proyecta las coordenadas (ras, decs) al plano tangente centrado en (ra0, dec0).
+    """
+
+    ras = np.radians(ras)
+    decs = np.radians(decs)
+
+    ra0 = np.radians(ra0)
+    dec0 = np.radians(dec0)
+
+    delta_ras = ras - ra0
+
+    den = (np.sin(dec0) * np.sin(decs) + 
+           np.cos(dec0) * np.cos(decs) * np.cos(delta_ras))
+    
+    xi = (np.cos(decs) * np.sin(delta_ras)) / den
+
+    eta = (np.cos(dec0) * np.sin(decs) - 
+           np.sin(dec0) * np.cos(decs) * np.cos(delta_ras)) / den
+    
+    X = xi * d0
+    Y = eta * d0
+
+    return X, Y
 
 def bin_superficial_density(radii, num_bins=30):
     """Calcula la densidad superficial a partir de las distancias proyectadas."""
@@ -245,30 +272,8 @@ def process_cluster_data(clusters_table, members_table):
     Rs_centers, sigma_obs = bin_superficial_density(Rs)
     k, rc, rt = fit_king_profile(Rs_centers, sigma_obs)
 
-    Z_matrix = build_z_matrix(Rs, rc, rt, k, len(Rs), M_realization=1)
-    idx, labels = get_stars_labels(Rs_centers, rc, rt)
-
-    # make_plots(Z_matrix, idx, labels, rt)
-
-    plt.figure(figsize=(10, 6))
-
-    Z_max = np.sqrt(max(0, rt**2 - Rs[0]**2))
-
-    Z = np.linspace(-Z_max, Z_max, 500)
-
-    P_Z = prob_Z_given_R(Z, Rs[0], rc, rt, k)
-
-    plt.plot(Z, P_Z, label=f'$R = {Rs[0]}$')
-    
-    plt.title('Probabilidad $P(Z | R)$ ')
-    plt.xlabel('$Z$')
-    plt.ylabel('$P(Z)$ (No normalizada)')
-    plt.axvline(0, color='black', linestyle='--', alpha=0.3) # Línea central en Z=0
-    plt.legend()
-    plt.grid(True, alpha=0.4)
-    plt.tight_layout()
-
-    plt.show()
+    X, Y = tangent_plane_projection(ras, decs, ra0, dec0, d0)
+    Z_samples = rejection_sampling(Rs, rc, rt, k)
 
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
