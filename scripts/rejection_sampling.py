@@ -346,7 +346,7 @@ def process_cluster_data(clusters_table, members_table):
 # EJECUCIÓN PRINCIPAL
 # ==============================================================================
 if __name__ == "__main__":
-    clusters_table = 'data/processed/clusters.csv'
+    clusters_table = 'data/processed/largest_clusters.csv'
     members_table = 'data/processed/members_with_estimated_masses.csv'
     
     process_cluster_data(clusters_table, members_table)
