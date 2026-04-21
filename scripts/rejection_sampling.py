@@ -214,7 +214,14 @@ def generate_radial_profile(X, Y, Z, M_star, num_bins=10):
     # Se calcula la dispersión de velocidades al cuadrado
     sigma_cuadrado = integral_r_inf / rho_bins
 
-    return r_centers, rho_bins, n_stars_in_bin, np.sqrt(sigma_cuadrado)
+    perfil_data = {
+        'r_bin': r_centers,
+        'densidad_vol': rho_bins,
+        'n_estrellas_bin': n_stars_in_bin,
+        'sigma_cuadrado': sigma_cuadrado
+    }
+
+    return pd.DataFrame(perfil_data)
 
 # ==============================================================================
 # PROCESAMIENTO DE DATOS
@@ -255,7 +262,7 @@ def process_cluster_data(clusters_table, members_table):
     Z_clean = Z_samples[mask]
     M_clean = Ms[mask]
 
-    rs, rhos_m, n_stars_in_bin, sigma_v = generate_radial_profile(X_clean, Y_clean, Z_clean, M_clean)
+    perfil_df = generate_radial_profile(X_clean, Y_clean, Z_clean, M_clean)
 
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
