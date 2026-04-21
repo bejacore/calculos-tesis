@@ -230,7 +230,8 @@ def generate_radial_profile(X, Y, Z, M_star, num_bins=10):
         'n_estrellas_bin': n_stars_in_bin,
         'densidad_n': n_density_bin,
         'densidad_vol': rho_bins,
-        'sigma_cuadrado': sigma_cuadrado
+        'sigma_cuadrado': sigma_cuadrado,
+        'mass_accum': M_cum_bins
     }
 
     return pd.DataFrame(perfil_data)
