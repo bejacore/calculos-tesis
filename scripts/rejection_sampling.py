@@ -245,7 +245,14 @@ def process_cluster_data(clusters_table, members_table):
     X, Y = tangent_plane_projection(ras, decs, ra0, dec0, d0)
     Z_samples = rejection_sampling(Rs, rc, rt, k)
 
-    rs, rhos_m, sigma_v = calculate_velocity_dispersion(X, Y, Z_samples, Ms)
+    mask = Z_samples != 0
+
+    X_clean = X[mask]
+    Y_clean = Y[mask]
+    Z_clean = Z_samples[mask]
+    M_clean = Ms[mask]
+
+    rs, rhos_m, sigma_v = calculate_velocity_dispersion(X_clean, Y_clean, Z_clean, M_clean)
 
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
