@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -106,8 +107,12 @@ def fit_king_profile(radii, densities):
     p0 = [np.max(densities), np.median(radii), np.max(radii)]
     bounds = ([0, 0, 0], [np.inf, np.inf, np.inf])
     
-    popt, pcov = curve_fit(king_surface_density, radii, densities, p0=p0, bounds=bounds)
-    return popt[0], popt[1], popt[2] # k, rc, rt
+    try:
+        popt, pcov = curve_fit(king_surface_density, radii, densities, p0=p0, bounds=bounds)
+        return popt[0], popt[1], popt[2] # k, rc, rt
+    except Exception as e:
+        print(f"Error en el ajuste: {e}")
+        return np.nan, np.nan, np.nan
 
 # ==============================================================================
 # REJECTION SAMPLING
@@ -264,11 +269,41 @@ def process_cluster_data(clusters_table, members_table):
 
     perfil_df = generate_radial_profile(X_clean, Y_clean, Z_clean, M_clean)
 
+def procesar_y_exportar_cumulos(path_clusters, path_members):
+    # Leer las tablas de cúmulos y miembros
+    clusters = pd.read_csv(path_clusters)
+    members = pd.read_csv(path_members)
+    
+    # Crear un directorio para los perfiles si no existe
+    output_directory = 'data/processed/perfiles_radiales/'
+    os.makedirs(output_directory, exist_ok=True)
+
+    # Lista para almacenar los datos globales del cúmulo
+    global_data = []
+
+    clusters_groups = members.groupby('Name')
+
+    for cluster, cluster_members in clusters_groups:
+        ra0 = clusters[clusters['Name'] == cluster]['RA_ICRS'].values[0]
+        dec0 = clusters[clusters['Name'] == cluster]['DE_ICRS'].values[0]
+        d0 = clusters[clusters['Name'] == cluster]['dist50'].values[0]
+
+        ras = cluster_members['RA_ICRS'].values
+        decs = cluster_members['DE_ICRS'].values
+        Ms = cluster_members['Mass50'].values
+
+        angular_dist = angular_distances(ra0, dec0, ras, decs)
+        Rs = angular_dist * d0
+
+        Rs_centers, sigma_obs = bin_superficial_density(Rs)
+        k, rc, rt = fit_king_profile(Rs_centers, sigma_obs)
+
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
 # ==============================================================================
 if __name__ == "__main__":
     clusters_table = 'data/processed/largest_clusters.csv'
-    members_table = 'data/processed/members_with_estimated_masses.csv'
+    members_table = 'data/processed/largest_clusters_members.csv'
     
-    process_cluster_data(clusters_table, members_table)
+    # process_cluster_data(clusters_table, members_table)
+    procesar_y_exportar_cumulos(clusters_table, members_table)
