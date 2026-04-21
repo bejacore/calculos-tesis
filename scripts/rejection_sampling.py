@@ -181,6 +181,7 @@ def generate_radial_profile(X, Y, Z, M_star, num_bins=10):
 
     # Se inicializan los arrays para los perfiles
     n_stars_in_bin = np.zeros(num_bins)
+    n_density_bin = np.zeros(num_bins)
     rho_bins = np.zeros(num_bins)
     M_cum_bins = np.zeros(num_bins)
 
@@ -188,10 +189,14 @@ def generate_radial_profile(X, Y, Z, M_star, num_bins=10):
         # Máscara para las estrellas que caen dentro del cascarón actual
         in_bin = (r_sorted >= r_bins[i]) & (r_sorted < r_bins[i+1])
 
+        # Número de estrellas en el bin
         n_stars_in_bin[i] = len(r[in_bin])
         
         # Volumen del cascarón esférico
         volumen = (4/3) * np.pi * (r_bins[i+1]**3 - r_bins[i]**3)
+
+        # Densidad de número en el bin
+        n_density_bin[i] = n_stars_in_bin[i] / volumen
         
         # Densidad = Masa en el bin / volumen
         rho_bins[i] = np.sum(M_sorted[in_bin]) / volumen
@@ -222,8 +227,9 @@ def generate_radial_profile(X, Y, Z, M_star, num_bins=10):
     # Se construye el DataFrame con los resultados
     perfil_data = {
         'r_bin': r_centers,
-        'densidad_vol': rho_bins,
         'n_estrellas_bin': n_stars_in_bin,
+        'densidad_n': n_density_bin,
+        'densidad_vol': rho_bins,
         'sigma_cuadrado': sigma_cuadrado
     }
 
