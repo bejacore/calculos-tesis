@@ -219,6 +219,7 @@ def generate_radial_profile(X, Y, Z, M_star, num_bins=10):
     # Se calcula la dispersión de velocidades al cuadrado
     sigma_cuadrado = integral_r_inf / rho_bins
 
+    # Se construye el DataFrame con los resultados
     perfil_data = {
         'r_bin': r_centers,
         'densidad_vol': rho_bins,
@@ -231,45 +232,10 @@ def generate_radial_profile(X, Y, Z, M_star, num_bins=10):
 # ==============================================================================
 # PROCESAMIENTO DE DATOS
 # ==============================================================================
-def process_cluster_data(clusters_table, members_table):
-    """
-    Procesa los datos del cúmulo, ajusta el perfil de King y realiza el muestreo 
-    de rechazo, finalmente generando los gráficos de las distribuciones 
-    marginales y condicionales. 
-    """
-    clusters = pd.read_csv(clusters_table)
-    members = pd.read_csv(members_table)
-
-    cluster = clusters[clusters['Name'] == 'King_11']
-    cluster_members = members[members['Name'] == 'King_11']
-
-    ra0 = cluster['RA_ICRS'].values[0]
-    dec0 = cluster['DE_ICRS'].values[0]
-    d0 = cluster['dist50'].values[0]
-
-    ras = cluster_members['RA_ICRS'].values
-    decs = cluster_members['DE_ICRS'].values
-    Ms = cluster_members['Mass50'].values
-
-    angular_dist = angular_distances(ra0, dec0, ras, decs)
-    Rs = angular_dist * d0
-
-    Rs_centers, sigma_obs = bin_superficial_density(Rs)
-    k, rc, rt = fit_king_profile(Rs_centers, sigma_obs)
-
-    X, Y = tangent_plane_projection(ras, decs, ra0, dec0, d0)
-    Z_samples = rejection_sampling(Rs, rc, rt, k)
-
-    mask = Z_samples != 0
-
-    X_clean = X[mask]
-    Y_clean = Y[mask]
-    Z_clean = Z_samples[mask]
-    M_clean = Ms[mask]
-
-    perfil_df = generate_radial_profile(X_clean, Y_clean, Z_clean, M_clean)
-
-def procesar_y_exportar_cumulos(path_clusters, path_members):
+def process_and_export_data(path_clusters, path_members):
+    '''
+    Procesa los datos de múltiples cúmulos y exporta sus perfiles radiales. 
+    '''
     # Leer las tablas de cúmulos y miembros
     clusters = pd.read_csv(path_clusters)
     members = pd.read_csv(path_members)
@@ -283,7 +249,11 @@ def procesar_y_exportar_cumulos(path_clusters, path_members):
 
     clusters_groups = members.groupby('Name')
 
+    id = 0
     for cluster, cluster_members in clusters_groups:
+        # Extraer información del cúmulo
+        num_members = len(cluster_members)
+
         ra0 = clusters[clusters['Name'] == cluster]['RA_ICRS'].values[0]
         dec0 = clusters[clusters['Name'] == cluster]['DE_ICRS'].values[0]
         d0 = clusters[clusters['Name'] == cluster]['dist50'].values[0]
@@ -292,11 +262,52 @@ def procesar_y_exportar_cumulos(path_clusters, path_members):
         decs = cluster_members['DE_ICRS'].values
         Ms = cluster_members['Mass50'].values
 
+        # Calcular las distancias proyectadas R para cada miembro
         angular_dist = angular_distances(ra0, dec0, ras, decs)
         Rs = angular_dist * d0
 
+        # Calcular la densidad superficial y ajustar el perfil de King
         Rs_centers, sigma_obs = bin_superficial_density(Rs)
         k, rc, rt = fit_king_profile(Rs_centers, sigma_obs)
+
+        # Guardar los parámetros globales del cúmulo
+        global_data.append({
+            'id': id,
+            'nombre': cluster,
+            'n_estrellas': num_members,
+            'rc': rc,
+            'rt': rt,
+            'k': k
+        })
+
+        # Proyectar las coordenadas al plano tangente y generar muestras de Z 
+        # usando rejection sampling
+        X, Y = tangent_plane_projection(ras, decs, ra0, dec0, d0)
+        Z_samples = rejection_sampling(Rs, rc, rt, k)
+
+        # Se filtran las muestras de Z para quedarse solo con las que fueron 
+        # aceptadas
+        mask = Z_samples != 0
+
+        X_clean = X[mask]
+        Y_clean = Y[mask]
+        Z_clean = Z_samples[mask]
+        M_clean = Ms[mask]
+
+        # Se genera el perfil radial 3D y se exporta a un archivo CSV
+        perfil_df = generate_radial_profile(X_clean, Y_clean, Z_clean, M_clean)
+
+        file_name = f"cluster_{id}.csv"
+        path_file = os.path.join(output_directory, file_name)
+
+        perfil_df.to_csv(path_file, index=False)
+
+        id += 1
+    
+    # Exportar los parámetros globales de todos los cúmulos a un archivo CSV
+    global_df = pd.DataFrame(global_data)
+    global_file = 'parametros_globales.csv'
+    global_df.to_csv(global_file, index=False)
 
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
@@ -305,5 +316,4 @@ if __name__ == "__main__":
     clusters_table = 'data/processed/largest_clusters.csv'
     members_table = 'data/processed/largest_clusters_members.csv'
     
-    # process_cluster_data(clusters_table, members_table)
-    procesar_y_exportar_cumulos(clusters_table, members_table)
+    process_and_export_data(clusters_table, members_table)
