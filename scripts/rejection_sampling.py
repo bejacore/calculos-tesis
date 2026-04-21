@@ -153,7 +153,7 @@ def rejection_sampling(R, rc, rt, k):
 # ==============================================================================
 # CALCULOS EN LAS TRES DIMESIONES
 # ==============================================================================
-def calculate_velocity_dispersion(X, Y, Z, M_star, num_bins=10):
+def generate_radial_profile(X, Y, Z, M_star, num_bins=10):
     '''
     Calcula la dispersión de velocidades a partir de la densidad espacial de 
     masa y la masa acumulada.
@@ -255,7 +255,7 @@ def process_cluster_data(clusters_table, members_table):
     Z_clean = Z_samples[mask]
     M_clean = Ms[mask]
 
-    rs, rhos_m, n_stars_in_bin, sigma_v = calculate_velocity_dispersion(X_clean, Y_clean, Z_clean, M_clean)
+    rs, rhos_m, n_stars_in_bin, sigma_v = generate_radial_profile(X_clean, Y_clean, Z_clean, M_clean)
 
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
