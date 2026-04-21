@@ -112,73 +112,48 @@ def fit_king_profile(radii, densities):
 # ==============================================================================
 # REJECTION SAMPLING
 # ==============================================================================
-def prob_Z_given_R(Z, R, rc, rt, k):
-    """Implementación de la probabilidad derivada P(Z | X, Y)."""
-    r = np.sqrt(R**2 + Z**2)
-    rho = king_spatial_density(r, rc, rt, k)
-    
-    # P(Z) proporcional a r^2 * rho(r) * (|Z| / r) = r * rho(r) * |Z|
-    return r * rho * np.abs(Z)
-
 def rejection_sampling(R, rc, rt, k):
     """
-    Realiza el muestreo de rechazo para obtener las coordenadas Z de las 
-    estrellas dado R.
+    Genera muestras de Z para cada R usando el método de rechazo.
     """
-    N = len(R)
-    Z_accepted = np.zeros(N)
-    
-    # Máscara para saber cuáles estrellas faltan por calcular
-    # Se descartan las estrellas con R >= rt (no pertenecen al modelo)
-    pending = R < rt 
-    
-    # El máximo de la función ocurre cuando R=0, lo que equivale a maximizar 
-    # r^2 * rho(r).
-    # Evaluamos un grid fino de r entre 0 y rt para encontrar este techo.
-    r_grid = np.linspace(0, rt, 5000)
-    P_grid = (r_grid**2) * king_spatial_density(r_grid, rc, rt, k)
-    P_global_max = np.max(P_grid)
+    Z_samples = np.zeros_like(R, dtype=float)
 
-    while np.any(pending):
-        # Se obtienen las estrellas que aún no han sido aceptadas
-        R_pending = R[pending]
-        n_pending = len(R_pending)
-        
-        # 2. Límite de Z geométrico
-        # Dado un R, la estrella no puede estar más allá del radio de marea.
-        # r^2 = R^2 + Z^2  =>  Z_max = sqrt(rt^2 - R^2)
-        Z_max = np.sqrt(rt**2 - R_pending**2)
-        
-        # 3. Se genera el Z candidato uniformemente entre -Z_max y +Z_max
-        Z_cand = np.random.uniform(-Z_max, Z_max, size=n_pending)
-        
-        # 4. Se calcula el radio 3D (r) para los Z candidatos
-        P_cand = prob_Z_given_R(Z_cand, R_pending, rc, rt, k)
-        
-        # 6. Muestreo de rechazo: Se generan 'u' usando el máximo global de P(Z|R)
-        u = np.random.uniform(0.0, P_global_max, size=n_pending)
-        
-        # 7. Condición de aceptación: si u < rho(cand), la muestra es válida
-        accept = u < P_cand
-        
-        # 8. Se actualizan los candidatos aceptados
-        # Se obtiene los índices globales de las estrellas que estaban pendientes
-        idx_pending = np.where(pending)[0]
-        # Se obtiene los índices globales de las que sí fueron aceptadas en esta ronda
-        idx_accepted = idx_pending[accept]
-        
-        # Se guardan los valores Z aceptados
-        Z_accepted[idx_accepted] = Z_cand[accept]
-        
-        # Se actualiza la máscara para no volver a calcular estas estrellas
-        pending[idx_accepted] = False
-        
-    return Z_accepted
+    mask = R < rt
+    R_valid = R[mask]
+
+    N = len(R_valid)
+    Z_valid = np.zeros(N)
+
+    Z_max = np.sqrt(rt**2 - R_valid**2)
+
+    rho_max = king_spatial_density(R_valid, rc, rt, k)
+
+    unaccepted = np.ones(N, dtype=bool)
+
+    while np.any(unaccepted):
+        indices = np.nonzero(unaccepted)[0]
+
+        Z_cand = np.random.uniform(-Z_max[indices], Z_max[indices])
+
+        r_cand = np.sqrt(R_valid[indices]**2 + Z_cand**2)
+
+        rho_cand = king_spatial_density(r_cand, rc, rt, k)
+
+        u = np.random.uniform(0, rho_max[indices])
+
+        accept = u <= rho_cand
+
+        Z_valid[indices[accept]] = Z_cand[accept]
+        unaccepted[indices[accept]] = False
+
+    Z_samples[mask] = Z_valid
+
+    return Z_samples
 
 # ==============================================================================
 # CALCULOS EN LAS TRES DIMESIONES
 # ==============================================================================
-def calculate_velocity_dispersion(X, Y, Z, M_star, num_bins=20):
+def calculate_velocity_dispersion(X, Y, Z, M_star, num_bins=10):
     '''
     Calcula la dispersión de velocidades a partir de la densidad espacial de 
     masa y la masa acumulada.
