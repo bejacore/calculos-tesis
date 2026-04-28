@@ -158,7 +158,7 @@ def rejection_sampling(R, rc, rt, k):
 # ==============================================================================
 # CALCULOS EN LAS TRES DIMESIONES
 # ==============================================================================
-def generate_radial_profile(X, Y, Z, M_star, num_bins=10):
+def generate_radial_profile(X, Y, Z, M_star, num_bins=10, min_stars=3):
     '''
     Calcula la dispersión de velocidades a partir de la densidad espacial de 
     masa y la masa acumulada.
@@ -180,58 +180,63 @@ def generate_radial_profile(X, Y, Z, M_star, num_bins=10):
     r_centers = (r_bins[1:] + r_bins[:-1]) / 2
 
     # Se inicializan los arrays para los perfiles
-    n_stars_in_bin = np.zeros(num_bins)
-    n_density_bin = np.zeros(num_bins)
-    rho_bins = np.zeros(num_bins)
-    M_cum_bins = np.zeros(num_bins)
+    r_centers_valid = []
+    n_stars_in_bin = []
+    n_density_valid = []
+    rho_valid = []
+    M_cum_valid = []
 
     for i in range(num_bins):
         # Máscara para las estrellas que caen dentro del cascarón actual
         in_bin = (r_sorted >= r_bins[i]) & (r_sorted < r_bins[i+1])
 
-        # Número de estrellas en el bin
-        n_stars_in_bin[i] = len(r[in_bin])
-        
-        # Volumen del cascarón esférico
-        volumen = (4/3) * np.pi * (r_bins[i+1]**3 - r_bins[i]**3)
+        # Contar las estrellas en el bin
+        num_stars = np.sum(in_bin)
 
-        # Densidad de número en el bin
-        n_density_bin[i] = n_stars_in_bin[i] / volumen
+        if num_stars >= min_stars:
+            # Volumen del cascarón esférico
+            volumen = (4/3) * np.pi * (r_bins[i+1]**3 - r_bins[i]**3)
         
-        # Densidad = Masa en el bin / volumen
-        rho_bins[i] = np.sum(M_sorted[in_bin]) / volumen
-        
-        # Masa acumulada hasta el centro del bin
-        idx_center = np.searchsorted(r_sorted, r_centers[i])
-        if idx_center < len(M_cum_exact):
-            M_cum_bins[i] = M_cum_exact[idx_center]
-        else:
-            M_cum_bins[i] = M_cum_exact[-1]
+            # Masa acumulada hasta el centro del bin
+            idx_center = np.searchsorted(r_sorted, r_centers[i])
+            if idx_center < len(M_cum_exact):
+                mass_acc = M_cum_exact[idx_center]
+            else:
+                mass_acc = M_cum_exact[-1]
 
-    # Se evitan divisiones por cero en zonas vacías
-    rho_bins[rho_bins == 0] = np.nan 
+            # Guardar los datos validos
+            r_centers_valid.append(r_centers[i])
+            n_stars_in_bin.append(num_stars)
+            n_density_valid.append(num_stars / volumen)
+            rho_valid.append(np.sum(M_sorted[in_bin]) / volumen)
+            M_cum_valid.append(mass_acc)
+
+    # Convertir arrays a numpy arrays
+    r_centers_valid = np.array(r_centers_valid)
+    rho_valid = np.array(rho_valid)
+    M_cum_valid = np.array(M_cum_valid)
 
     # Se construye el integrando: rho(r) * G * M(<r) / r^2
-    integrando = rho_bins * G * M_cum_bins / r_centers**2
+    integrando = rho_valid * G * M_cum_valid / r_centers_valid**2
 
     # Se calcula la integral acumulada de 0 a r
     # (Se usa initial=0 para mantener la misma longitud del array)
-    integral_0_r = cumulative_trapezoid(integrando, x=r_centers, initial=0)
+    integral_0_r = cumulative_trapezoid(integrando, x=r_centers_valid, initial=0)
     
     # La integral de r a R_max es la integral total menos la integral hasta r
     integral_r_inf = integral_0_r[-1] - integral_0_r
 
     # Se calcula la dispersión de velocidades al cuadrado
-    sigma_cuadrado = integral_r_inf / rho_bins
+    sigma_cuadrado = integral_r_inf / rho_valid
 
     # Se construye el DataFrame con los resultados
     perfil_data = {
-        'r_bin': r_centers,
+        'r_bin': r_centers_valid,
         'n_estrellas_bin': n_stars_in_bin,
-        'densidad_n': n_density_bin,
-        'densidad_vol': rho_bins,
+        'densidad_n': n_density_valid,
+        'densidad_vol': rho_valid,
         'sigma_cuadrado': sigma_cuadrado,
-        'mass_accum': M_cum_bins
+        'mass_accum': M_cum_valid
     }
 
     return pd.DataFrame(perfil_data)
