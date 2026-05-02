@@ -1,3 +1,5 @@
+import os
+import glob
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -79,3 +81,60 @@ def modelo_sigma2(r_bins, A, rc, rt):
                             fill_value=0.0, bounds_error=False)
     
     return interpolador(r_bins)
+
+#===============================================================================
+# RUTAS Y ARCHIVOS
+#===============================================================================
+clusters = 'data/processed/perfiles_radiales/3d'
+global_data = 'data/processed/parametros_globales.csv'
+
+# Cargar datos globales de los cúmulos
+df_global = pd.read_csv(global_data)
+
+# Listar archivos de perfiles radiales
+files = glob.glob(os.path.join(clusters, 'cluster_*.csv'))
+
+#===============================================================================
+# AJUSTES DEL MODELO
+#===============================================================================
+for file in files:
+    # Extraer ID del nombre del archivo
+    file_name = os.path.basename(file)
+    cluster_id = int(file_name.replace('cluster_', '').replace('.csv', ''))
+
+    # Leer la tabla del cúmulo
+    cluster = pd.read_csv(file)
+
+    # Extraer parámetros del cúmulo desde el archivo general
+    cluster_data = df_global.loc[cluster_id]
+    rc = cluster_data['rc']
+    rt = cluster_data['rt']
+    k = cluster_data['k']
+    nombre = cluster_data['nombre']
+
+    # Extraer datos para los ajustes
+    r_bins = cluster['r_bin'].values
+
+    # Ajuste del modelo de King a la densidad de número observada
+    rho_num = cluster['densidad_n']
+    p0 = [rc, rt, k]  # Valores iniciales rc, rt, k
+    bounds = ([0.1, 0.1, 0.1], [np.inf, np.inf, np.inf])  # rc > 0, rt > 0, k > 0
+    popt, pcov = curve_fit(rho, r_bins, rho_num, p0=p0, bounds=bounds)
+    rc_rho_num, rt_rho_num, k_rho_num = popt
+
+    df_global.loc[cluster_id, 'rc_rho_num'] = rc_rho_num
+    df_global.loc[cluster_id, 'rt_rho_num'] = rt_rho_num
+    df_global.loc[cluster_id, 'k_rho_num'] = k_rho_num
+
+    # Ajuste del modelo de King a la dispersión de velocidades observada
+    sigma2_obs = cluster['sigma_cuadrado']
+    p0 = [np.max(sigma2_obs), rc, rt]  # Valores iniciales para A, rc, rt
+    bounds = ([0, 0.1, 0.1], [np.inf, np.inf, np.inf])  # A > 0, rc > 0, rt > 0
+    popt, pcov = curve_fit(modelo_sigma2, r_bins, sigma2_obs, p0=p0, bounds=bounds)
+    A_sig2, rc_sig2, rt_sig2 = popt
+
+    df_global.loc[cluster_id, 'A_sig2'] = A_sig2
+    df_global.loc[cluster_id, 'rc_sig2'] = rc_sig2
+    df_global.loc[cluster_id, 'rt_sig2'] = rt_sig2
+
+df_global.to_csv(global_data, index=False)
