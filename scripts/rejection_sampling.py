@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -106,79 +107,58 @@ def fit_king_profile(radii, densities):
     p0 = [np.max(densities), np.median(radii), np.max(radii)]
     bounds = ([0, 0, 0], [np.inf, np.inf, np.inf])
     
-    popt, pcov = curve_fit(king_surface_density, radii, densities, p0=p0, bounds=bounds)
-    return popt[0], popt[1], popt[2] # k, rc, rt
+    try:
+        popt, pcov = curve_fit(king_surface_density, radii, densities, p0=p0, bounds=bounds)
+        return popt[0], popt[1], popt[2] # k, rc, rt
+    except Exception as e:
+        print(f"Error en el ajuste: {e}")
+        return np.nan, np.nan, np.nan
 
 # ==============================================================================
 # REJECTION SAMPLING
 # ==============================================================================
-def prob_Z_given_R(Z, R, rc, rt, k):
-    """Implementación de la probabilidad derivada P(Z | X, Y)."""
-    r = np.sqrt(R**2 + Z**2)
-    rho = king_spatial_density(r, rc, rt, k)
-    
-    # P(Z) proporcional a r^2 * rho(r) * (|Z| / r) = r * rho(r) * |Z|
-    return r * rho * np.abs(Z)
-
 def rejection_sampling(R, rc, rt, k):
     """
-    Realiza el muestreo de rechazo para obtener las coordenadas Z de las 
-    estrellas dado R.
+    Genera muestras de Z para cada R usando el método de rechazo.
     """
-    N = len(R)
-    Z_accepted = np.zeros(N)
-    
-    # Máscara para saber cuáles estrellas faltan por calcular
-    # Se descartan las estrellas con R >= rt (no pertenecen al modelo)
-    pending = R < rt 
-    
-    # El máximo de la función ocurre cuando R=0, lo que equivale a maximizar 
-    # r^2 * rho(r).
-    # Evaluamos un grid fino de r entre 0 y rt para encontrar este techo.
-    r_grid = np.linspace(0, rt, 5000)
-    P_grid = (r_grid**2) * king_spatial_density(r_grid, rc, rt, k)
-    P_global_max = np.max(P_grid)
+    Z_samples = np.zeros_like(R, dtype=float)
 
-    while np.any(pending):
-        # Se obtienen las estrellas que aún no han sido aceptadas
-        R_pending = R[pending]
-        n_pending = len(R_pending)
-        
-        # 2. Límite de Z geométrico
-        # Dado un R, la estrella no puede estar más allá del radio de marea.
-        # r^2 = R^2 + Z^2  =>  Z_max = sqrt(rt^2 - R^2)
-        Z_max = np.sqrt(rt**2 - R_pending**2)
-        
-        # 3. Se genera el Z candidato uniformemente entre -Z_max y +Z_max
-        Z_cand = np.random.uniform(-Z_max, Z_max, size=n_pending)
-        
-        # 4. Se calcula el radio 3D (r) para los Z candidatos
-        P_cand = prob_Z_given_R(Z_cand, R_pending, rc, rt, k)
-        
-        # 6. Muestreo de rechazo: Se generan 'u' usando el máximo global de P(Z|R)
-        u = np.random.uniform(0.0, P_global_max, size=n_pending)
-        
-        # 7. Condición de aceptación: si u < rho(cand), la muestra es válida
-        accept = u < P_cand
-        
-        # 8. Se actualizan los candidatos aceptados
-        # Se obtiene los índices globales de las estrellas que estaban pendientes
-        idx_pending = np.where(pending)[0]
-        # Se obtiene los índices globales de las que sí fueron aceptadas en esta ronda
-        idx_accepted = idx_pending[accept]
-        
-        # Se guardan los valores Z aceptados
-        Z_accepted[idx_accepted] = Z_cand[accept]
-        
-        # Se actualiza la máscara para no volver a calcular estas estrellas
-        pending[idx_accepted] = False
-        
-    return Z_accepted
+    mask = R < rt
+    R_valid = R[mask]
+
+    N = len(R_valid)
+    Z_valid = np.zeros(N)
+
+    Z_max = np.sqrt(rt**2 - R_valid**2)
+
+    rho_max = king_spatial_density(R_valid, rc, rt, k)
+
+    unaccepted = np.ones(N, dtype=bool)
+
+    while np.any(unaccepted):
+        indices = np.nonzero(unaccepted)[0]
+
+        Z_cand = np.random.uniform(-Z_max[indices], Z_max[indices])
+
+        r_cand = np.sqrt(R_valid[indices]**2 + Z_cand**2)
+
+        rho_cand = king_spatial_density(r_cand, rc, rt, k)
+
+        u = np.random.uniform(0, rho_max[indices])
+
+        accept = u <= rho_cand
+
+        Z_valid[indices[accept]] = Z_cand[accept]
+        unaccepted[indices[accept]] = False
+
+    Z_samples[mask] = Z_valid
+
+    return Z_samples
 
 # ==============================================================================
 # CALCULOS EN LAS TRES DIMESIONES
 # ==============================================================================
-def calculate_velocity_dispersion(X, Y, Z, M_star, num_bins=20):
+def generate_radial_profile(X, Y, Z, M_star, num_bins=10, min_stars=3):
     '''
     Calcula la dispersión de velocidades a partir de la densidad espacial de 
     masa y la masa acumulada.
@@ -200,83 +180,152 @@ def calculate_velocity_dispersion(X, Y, Z, M_star, num_bins=20):
     r_centers = (r_bins[1:] + r_bins[:-1]) / 2
 
     # Se inicializan los arrays para los perfiles
-    rho_bins = np.zeros(num_bins)
-    M_cum_bins = np.zeros(num_bins)
+    r_centers_valid = []
+    n_stars_in_bin = []
+    n_density_valid = []
+    rho_valid = []
+    M_cum_valid = []
 
     for i in range(num_bins):
         # Máscara para las estrellas que caen dentro del cascarón actual
         in_bin = (r_sorted >= r_bins[i]) & (r_sorted < r_bins[i+1])
-        
-        # Volumen del cascarón esférico
-        volumen = (4/3) * np.pi * (r_bins[i+1]**3 - r_bins[i]**3)
-        
-        # Densidad = Masa en el bin / volumen
-        rho_bins[i] = np.sum(M_sorted[in_bin]) / volumen
-        
-        # Masa acumulada hasta el centro del bin
-        idx_center = np.searchsorted(r_sorted, r_centers[i])
-        if idx_center < len(M_cum_exact):
-            M_cum_bins[i] = M_cum_exact[idx_center]
-        else:
-            M_cum_bins[i] = M_cum_exact[-1]
 
-    # Se evitan divisiones por cero en zonas vacías
-    rho_bins[rho_bins == 0] = np.nan 
+        # Contar las estrellas en el bin
+        num_stars = np.sum(in_bin)
+
+        if num_stars >= min_stars:
+            # Volumen del cascarón esférico
+            volumen = (4/3) * np.pi * (r_bins[i+1]**3 - r_bins[i]**3)
+        
+            # Masa acumulada hasta el centro del bin
+            idx_center = np.searchsorted(r_sorted, r_centers[i])
+            if idx_center < len(M_cum_exact):
+                mass_acc = M_cum_exact[idx_center]
+            else:
+                mass_acc = M_cum_exact[-1]
+
+            # Guardar los datos validos
+            r_centers_valid.append(r_centers[i])
+            n_stars_in_bin.append(num_stars)
+            n_density_valid.append(num_stars / volumen)
+            rho_valid.append(np.sum(M_sorted[in_bin]) / volumen)
+            M_cum_valid.append(mass_acc)
+
+    # Convertir arrays a numpy arrays
+    r_centers_valid = np.array(r_centers_valid)
+    rho_valid = np.array(rho_valid)
+    M_cum_valid = np.array(M_cum_valid)
 
     # Se construye el integrando: rho(r) * G * M(<r) / r^2
-    integrando = rho_bins * G * M_cum_bins / r_centers**2
+    integrando = rho_valid * G * M_cum_valid / r_centers_valid**2
 
     # Se calcula la integral acumulada de 0 a r
     # (Se usa initial=0 para mantener la misma longitud del array)
-    integral_0_r = cumulative_trapezoid(integrando, x=r_centers, initial=0)
+    integral_0_r = cumulative_trapezoid(integrando, x=r_centers_valid, initial=0)
     
     # La integral de r a R_max es la integral total menos la integral hasta r
     integral_r_inf = integral_0_r[-1] - integral_0_r
 
     # Se calcula la dispersión de velocidades al cuadrado
-    sigma_cuadrado = integral_r_inf / rho_bins
+    sigma_cuadrado = integral_r_inf / rho_valid
 
-    return r_centers, rho_bins, np.sqrt(sigma_cuadrado)
+    # Se construye el DataFrame con los resultados
+    perfil_data = {
+        'r_bin': r_centers_valid,
+        'n_estrellas_bin': n_stars_in_bin,
+        'densidad_n': n_density_valid,
+        'densidad_vol': rho_valid,
+        'sigma_cuadrado': sigma_cuadrado,
+        'mass_accum': M_cum_valid
+    }
+
+    return pd.DataFrame(perfil_data)
 
 # ==============================================================================
 # PROCESAMIENTO DE DATOS
 # ==============================================================================
-def process_cluster_data(clusters_table, members_table):
-    """
-    Procesa los datos del cúmulo, ajusta el perfil de King y realiza el muestreo 
-    de rechazo, finalmente generando los gráficos de las distribuciones 
-    marginales y condicionales. 
-    """
-    clusters = pd.read_csv(clusters_table)
-    members = pd.read_csv(members_table)
+def process_and_export_data(path_clusters, path_members):
+    '''
+    Procesa los datos de múltiples cúmulos y exporta sus perfiles radiales. 
+    '''
+    # Leer las tablas de cúmulos y miembros
+    clusters = pd.read_csv(path_clusters)
+    members = pd.read_csv(path_members)
+    
+    # Crear un directorio para los perfiles si no existe
+    output_directory = 'data/processed/perfiles_radiales/'
+    os.makedirs(output_directory, exist_ok=True)
 
-    cluster = clusters[clusters['Name'] == 'King_11']
-    cluster_members = members[members['Name'] == 'King_11']
+    # Lista para almacenar los datos globales del cúmulo
+    global_data = []
 
-    ra0 = cluster['RA_ICRS'].values[0]
-    dec0 = cluster['DE_ICRS'].values[0]
-    d0 = cluster['dist50'].values[0]
+    clusters_groups = members.groupby('Name')
 
-    ras = cluster_members['RA_ICRS'].values
-    decs = cluster_members['DE_ICRS'].values
-    Ms = cluster_members['Mass50'].values
+    id = 0
+    for cluster, cluster_members in clusters_groups:
+        # Extraer información del cúmulo
+        num_members = len(cluster_members)
 
-    angular_dist = angular_distances(ra0, dec0, ras, decs)
-    Rs = angular_dist * d0
+        ra0 = clusters[clusters['Name'] == cluster]['RA_ICRS'].values[0]
+        dec0 = clusters[clusters['Name'] == cluster]['DE_ICRS'].values[0]
+        d0 = clusters[clusters['Name'] == cluster]['dist50'].values[0]
 
-    Rs_centers, sigma_obs = bin_superficial_density(Rs)
-    k, rc, rt = fit_king_profile(Rs_centers, sigma_obs)
+        ras = cluster_members['RA_ICRS'].values
+        decs = cluster_members['DE_ICRS'].values
+        Ms = cluster_members['Mass50'].values
 
-    X, Y = tangent_plane_projection(ras, decs, ra0, dec0, d0)
-    Z_samples = rejection_sampling(Rs, rc, rt, k)
+        # Calcular las distancias proyectadas R para cada miembro
+        angular_dist = angular_distances(ra0, dec0, ras, decs)
+        Rs = angular_dist * d0
 
-    rs, rhos_m, sigma_v = calculate_velocity_dispersion(X, Y, Z_samples, Ms)
+        # Calcular la densidad superficial y ajustar el perfil de King
+        Rs_centers, sigma_obs = bin_superficial_density(Rs)
+        k, rc, rt = fit_king_profile(Rs_centers, sigma_obs)
+
+        # Guardar los parámetros globales del cúmulo
+        global_data.append({
+            'id': id,
+            'nombre': cluster,
+            'n_estrellas': num_members,
+            'rc': rc,
+            'rt': rt,
+            'k': k
+        })
+
+        # Proyectar las coordenadas al plano tangente y generar muestras de Z 
+        # usando rejection sampling
+        X, Y = tangent_plane_projection(ras, decs, ra0, dec0, d0)
+        Z_samples = rejection_sampling(Rs, rc, rt, k)
+
+        # Se filtran las muestras de Z para quedarse solo con las que fueron 
+        # aceptadas
+        mask = Z_samples != 0
+
+        X_clean = X[mask]
+        Y_clean = Y[mask]
+        Z_clean = Z_samples[mask]
+        M_clean = Ms[mask]
+
+        # Se genera el perfil radial 3D y se exporta a un archivo CSV
+        perfil_df = generate_radial_profile(X_clean, Y_clean, Z_clean, M_clean)
+
+        file_name = f"cluster_{id}.csv"
+        path_file = os.path.join(output_directory, file_name)
+
+        perfil_df.to_csv(path_file, index=False)
+
+        id += 1
+    
+    # Exportar los parámetros globales de todos los cúmulos a un archivo CSV
+    global_df = pd.DataFrame(global_data)
+    global_file = 'parametros_globales.csv'
+    global_df.to_csv(global_file, index=False)
 
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
 # ==============================================================================
 if __name__ == "__main__":
     clusters_table = 'data/processed/largest_clusters.csv'
-    members_table = 'data/processed/members_with_estimated_masses.csv'
+    members_table = 'data/processed/largest_clusters_members.csv'
     
-    process_cluster_data(clusters_table, members_table)
+    process_and_export_data(clusters_table, members_table)
