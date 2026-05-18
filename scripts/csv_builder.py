@@ -105,6 +105,81 @@ def sig2_model_for_fit(rs_obs, M_mean, rc, rt, k):
     sig2_interp = np.interp(rs_obs, rs_grid, sig2_grid)
     return sig2_interp
 
+def generate_radial_profile(rs, Ms, num_bins=10, min_stars=3):
+    # Constante gravitacional G (pc * M_sun^-1 * (km/s)^2)
+    G = 4.3009e-3 
+
+    # Definir bordes de cada bin
+    percentiles = np.linspace(0, 100, num_bins + 1)
+    edges = np.percentile(rs, percentiles)
+    edges[0] -= -1e-6 # incluir el radio mínimo exacto
+    edges[-1] += 1e-6
+
+    rs_mid = []
+    num_stars = []
+    num_density = []
+    rhos = []
+    Ms_in_bin = []
+    for i in range(num_bins):
+        r_lo, r_hi = edges[i], edges[i + 1]
+        r_mid = 0.5 * (r_lo + r_hi)
+
+        # Estrellas en el bin
+        in_bin = (rs >= r_lo) & (rs < r_hi)
+
+        # Contar estrellas en el bin
+        num_stars_in_bin = np.sum(in_bin)
+
+        if num_stars_in_bin < min_stars:
+            continue
+
+        # Volumen del cascarón esférico
+        vol = (4.0 / 3.0) * np.pi * (r_hi**3 - r_lo**3)
+
+        # Masa en el bin
+        mass_in_bin = np.sum(Ms[in_bin])
+
+        # Guardar datos validos
+        rs_mid.append(r_mid)
+        num_stars.append(num_stars_in_bin)
+        num_density.append(num_stars_in_bin / vol)
+        rhos.append(mass_in_bin / vol)
+        Ms_in_bin.append(mass_in_bin)
+
+    # Convertir arrays a numpy arrays
+    rs_mid = np.array(rs_mid)
+    num_stars = np.array(num_stars)
+    num_density = np.array(num_density)
+    rhos = np.array(rhos)
+    Ms_acc = np.cumsum(Ms_in_bin)
+
+    # Calcular dispersión de velocidades
+    # Se construye el integrando: rho(r) * G * M(<r) / r^2
+    integrand = rhos * G * Ms_acc / rs_mid**2
+
+    # Se calcula la integral acumulada de 0 a r
+    # (Se usa initial=0 para mantener la misma longitud del array)
+    integral_0_r = cumulative_trapezoid(integrand, x=rs_mid, initial=0)
+
+    # La integral de r a rt es la integral total menos la integral hasta r
+    integral_r_rt = integral_0_r[-1] - integral_0_r
+
+    # Calcular integral de jeans
+    sig2 = integral_r_rt / rhos
+    sig = np.sqrt(sig2)
+
+    # Contruir dataframe con los resultados
+    perfil_data = {
+        'r_bin': rs_mid,
+        'num_estrellas': num_stars,
+        'densidad_num': num_density,
+        'densidad_vol': rhos,
+        'sigma': sig,
+        'masa_acumulada': Ms_acc
+    }
+
+    return pd.DataFrame(perfil_data)
+
 # ==============================================================================
 # PROCESAMIENTO DE DATOS
 # ==============================================================================
@@ -115,6 +190,10 @@ def process_and_export_data(path_clusters, path_members):
     # Leer las tablas de cúmulos y miembros
     clusters = pd.read_csv(path_clusters)
     members = pd.read_csv(path_members)
+
+    # Crear un directorio para los perfiles si no existe
+    output_directory = 'data/processed/perfiles_radiales/'
+    os.makedirs(output_directory, exist_ok=True)
 
     # Lista para almacenar los datos globales del cúmulo
     global_data = []
@@ -218,6 +297,7 @@ def process_and_export_data(path_clusters, path_members):
 
         M_mean_sig2, rc_sig2, rt_sig2, k_sig2 = popt_sig2
 
+        # ----------------------- Datos globales -------------------------------
         global_data.append({
             'id': id,
             'nombre': cluster,
@@ -234,6 +314,13 @@ def process_and_export_data(path_clusters, path_members):
             'M_mean_sig2': M_mean_sig2
         })
 
+        # Generar perfil radial 3D del cúmulo i-ésimo
+        perfil_df = generate_radial_profile(rs, Ms_v, num_bins_3d)
+
+        # file_name = f'cluster_{id}.csv'
+        # path_file = os.path.join(output_directory, file_name)
+        # perfil_df.to_csv(path_file, index=False)
+        
         id += 1
 
     # Exportar los parámetros globales de todos los cúmulos a un archivo CSV
