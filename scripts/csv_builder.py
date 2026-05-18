@@ -105,6 +105,70 @@ def sig2_model_for_fit(rs_obs, M_mean, rc, rt, k):
     sig2_interp = np.interp(rs_obs, rs_grid, sig2_grid)
     return sig2_interp
 
+def generate_surface_profile(Rs, rvs, num_bins=10, min_stars=3):
+    # Definir los border de cada bin
+    percentiles = np.linspace(0, 100, num_bins + 1)
+    edges = np.percentile(Rs, percentiles)
+    edges[0] -= 1e-6 # incluir el radio mínimo exacto
+    edges[-1] += 1e-6
+
+    Rs_mid = []
+    num_stars = []
+    num_density = []
+    sigs = []
+    for i in range(num_bins):
+        R_lo, R_hi = edges[i], edges[i + 1]
+        R_mid = 0.5 * (R_lo + R_hi)
+
+        # Estrellas del bin
+        in_bin = (Rs >= R_lo) & (Rs < R_hi)
+
+        # Contar estrellas en el bin
+        num_stars_in_bin = np.sum(in_bin)
+
+        if num_stars_in_bin < min_stars:
+            continue
+        
+        # Área del anillo
+        area = np.pi * (R_hi**2 - R_lo**2)
+
+        # Calcular dispersión de velocidad observada
+        rvs_mask = ~np.isnan(rvs[in_bin])
+        rvs_valid = np.sum(rvs_mask)
+
+        if rvs_valid >= min_stars:
+            rvs_in_bin = rvs[in_bin]
+
+            v_mean = np.mean(rvs_in_bin)
+            sig2 = np.sum((rvs_in_bin - v_mean)**2) / (num_stars_in_bin - 1)
+            sig = np.sqrt(sig2)
+            
+            # Guardar dispersión de velocidades válidas
+            sigs.append(sig)
+        else:
+            sigs.append(np.nan)
+        
+        # Guardar datos válidos
+        Rs_mid.append(R_mid)
+        num_stars.append(num_stars_in_bin)
+        num_density.append(num_stars_in_bin / area)
+
+    # Convertir arrays a numpy arrays
+    Rs_mid = np.array(Rs_mid)
+    num_stars = np.array(num_stars)
+    num_density = np.array(num_density)
+    sigs = np.array(sigs)
+
+    # Contruir dataframe con los resultados
+    perfil_data = {
+        'R_bin': Rs_mid,
+        'num_estrellas': num_stars,
+        'densidad_num': num_density,
+        'sig_obs': sigs
+    }
+
+    return perfil_data
+
 # ==============================================================================
 # PERFILES RADIALES ESPACIALES
 # ==============================================================================
@@ -194,9 +258,12 @@ def process_and_export_data(path_clusters, path_members):
     clusters = pd.read_csv(path_clusters)
     members = pd.read_csv(path_members)
 
-    # Crear un directorio para los perfiles si no existe
+    # Crear directorios para los perfiles si no existen
     spatial_output = 'data/processed/perfiles_radiales/espaciales'
     os.makedirs(spatial_output, exist_ok=True)
+
+    # surface_output = 'data/processed/perfiles_radiales/superficiales'
+    # os.makedirs(surface_output, exist_ok=True)
 
     # Lista para almacenar los datos globales del cúmulo
     global_data = []
@@ -215,6 +282,8 @@ def process_and_export_data(path_clusters, path_members):
         ras = cluster_members['RA_ICRS'].values
         decs = cluster_members['DE_ICRS'].values
         Ms = cluster_members['Mass50'].values
+
+        rvs = cluster_members['RV']
 
         # -------------------- Ajuste perfil superficial -----------------------
         # Realizar proyección gnomónica
@@ -325,6 +394,9 @@ def process_and_export_data(path_clusters, path_members):
         file_name = f"cluster_{id}.csv"
         path_file = os.path.join(spatial_output, file_name)
         perfil_df.to_csv(path_file, index=False)
+
+        # ---------------------- Perfil superficial ----------------------------
+        perfil_df = generate_surface_profile(Rs, rvs, num_bins_2d)
 
         id += 1
 
