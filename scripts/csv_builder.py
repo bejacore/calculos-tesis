@@ -105,6 +105,9 @@ def sig2_model_for_fit(rs_obs, M_mean, rc, rt, k):
     sig2_interp = np.interp(rs_obs, rs_grid, sig2_grid)
     return sig2_interp
 
+# ==============================================================================
+# PERFILES RADIALES ESPACIALES
+# ==============================================================================
 def generate_radial_profile(rs, Ms, num_bins=10, min_stars=3):
     # Constante gravitacional G (pc * M_sun^-1 * (km/s)^2)
     G = 4.3009e-3 
@@ -192,8 +195,8 @@ def process_and_export_data(path_clusters, path_members):
     members = pd.read_csv(path_members)
 
     # Crear un directorio para los perfiles si no existe
-    output_directory = 'data/processed/perfiles_radiales/'
-    os.makedirs(output_directory, exist_ok=True)
+    spatial_output = 'data/processed/perfiles_radiales/espaciales'
+    os.makedirs(spatial_output, exist_ok=True)
 
     # Lista para almacenar los datos globales del cúmulo
     global_data = []
@@ -314,13 +317,15 @@ def process_and_export_data(path_clusters, path_members):
             'M_mean_sig2': M_mean_sig2
         })
 
-        # Generar perfil radial 3D del cúmulo i-ésimo
+        # ------------------------ Perfil espacial -----------------------------
+        # Generar el perfil radial 3D del cúmulo
         perfil_df = generate_radial_profile(rs, Ms_v, num_bins_3d)
 
-        # file_name = f'cluster_{id}.csv'
-        # path_file = os.path.join(output_directory, file_name)
-        # perfil_df.to_csv(path_file, index=False)
-        
+        # Exportar a un archivo CSV
+        file_name = f"cluster_{id}.csv"
+        path_file = os.path.join(spatial_output, file_name)
+        perfil_df.to_csv(path_file, index=False)
+
         id += 1
 
     # Exportar los parámetros globales de todos los cúmulos a un archivo CSV
