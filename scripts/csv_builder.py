@@ -17,8 +17,7 @@ def process_and_export_data(path_clusters, path_members):
     clusters = pd.read_csv(path_clusters)
     members = pd.read_csv(path_members)
 
-    print(clusters.head())
-
+    
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
 # ==============================================================================
