@@ -104,3 +104,41 @@ def rejection_sampling(R, rc, rt, k, seed=23):
  
     Z_samples[mask] = Z_valid
     return Z_samples
+
+# ------------------------ Dispersión de velocidades ---------------------------
+def mass_accum(rs, M_mean, rc, rt, k):
+    """
+    Masa acumulada M(<r) usando densidad de masa rho(r) = M_mean · n(r).
+ 
+    Parámetros con unidades:
+      rs     — parsecs
+      M_mean — M_sun
+      k      — parámetro de normalización de n(r)
+    Retorna M(<r) en M_sun.
+    """
+
+    rhos = M_mean * num_density(rs, rc, rt, k) # M_sun / pc^3
+    integrand = rs**2 * rhos
+    M_r = 4.0 * np.pi * cumulative_trapezoid(integrand, rs, initial=0)
+    return M_r
+
+def calculate_sig2(rs, M_mean, rc, rt, k):
+    """
+    Dispersión de velocidades al cuadrado σ²(r) [km²/s²] por el ecuación
+    de Jeans isotrópica en equilibrio.
+    """
+    G = 4.300e-3 # pc M_sun^-1 (km/s)^2
+ 
+    rhos = M_mean * num_density(rs, rc, rt, k)
+    rhos_safe = np.where(rhos > 0.0, rhos, np.nan)
+    M_r = mass_accum(rs, M_mean, rc, rt, k)
+ 
+    integrand = rhos_safe * M_r / rs**2
+    valid = np.isfinite(integrand)
+    integrand_filled = np.where(valid, integrand, 0.0)
+ 
+    int_0_r = cumulative_trapezoid(integrand_filled, rs, initial=0)
+    int_r_rt = int_0_r[-1] - int_0_r
+ 
+    sig2 = np.where(rhos_safe > 0.0, G / rhos_safe * int_r_rt, 0.0)
+    return sig2
