@@ -30,6 +30,14 @@ def calculate_num_surface_density(Rs, num_bins=30):
     Sigma_obs = counts / areas
     return Rs_mid, Sigma_obs
 
+def calculate_num_density(rs, num_bins=30):
+    counts, bin_edges = np.histogram(rs, bins=num_bins)
+    vols = (4.0/3.0) * np.pi * (bin_edges[1:]**3 - bin_edges[:-1]**3)
+    
+    rs_mid = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+    n_obs = counts / vols
+    return rs_mid, n_obs
+
 # ==============================================================================
 # PROCESAMIENTO DE DATOS
 # ==============================================================================
@@ -86,17 +94,56 @@ def process_and_export_data(path_clusters, path_members):
             maxfev=10000,
         )
 
+        # Valores obtenidos
         rc_2d, rt_2d, k_2d = popt_2d
 
+        # ----------------------- Ajuste perfil espacial -----------------------
+        # Estimar coordenada Z
+        Z = utils.rejection_sampling(Rs, rc_2d, rt_2d, k_2d, seed=23)
+
+        # Quitar valores que no sean finitos
+        valid_mask = np.isfinite(Z)
+        X_v = X[valid_mask]
+        Y_v = Y[valid_mask]
+        Z_v = Z[valid_mask]
+        Ms_v = Ms[valid_mask]
+
+        # Calcular radios espaciales
+        rs = np.sqrt(X_v**2 + Y_v**2 + Z_v**2)
+
+        # Calcular el número de bins
+        num_bins_3d = calculate_num_bins(rs)
+
+        # Calcular densidad de número espacial
+        rs_mid, n_obs = calculate_num_density(rs, num_bins_3d)
+
+        # Realizar ajuste
+        popt_3d, pcov_3d = curve_fit(
+            utils.num_density,
+            rs_mid, n_obs,
+            p0=[rc_2d, rt_2d, k_2d], # se usa el ajuste 2D
+            bounds=(0, np.inf),
+            maxfev=10000,
+        )
+
+        # Valores obtenidos
+        rc_3d, rt_3d, k_3d = popt_3d
+
         global_data.append({
-            'd': id,
+            'id': id,
             'nombre': cluster,
             'num_miembros': num_members,
             'rc_2d': rc_2d,
             'rt_2d': rt_2d,
-            'k_2d': k_2d
+            'k_2d': k_2d,
+            'rc_3d': rc_3d,
+            'rt_3d': rt_3d,
+            'k_3d': k_3d
         })
 
+        id += 1
+        
+    print(global_data[23])
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
 # ==============================================================================
