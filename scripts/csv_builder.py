@@ -236,6 +236,11 @@ def process_and_export_data(path_clusters, path_members):
 
         id += 1
 
+    # Exportar los parámetros globales de todos los cúmulos a un archivo CSV
+    global_df = pd.DataFrame(global_data)
+    global_file = 'data/processed/parametros_globales.csv'
+    global_df.to_csv(global_file, index=False)
+
 # ==============================================================================
 # EJECUCIÓN PRINCIPAL
 # ==============================================================================
