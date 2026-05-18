@@ -105,6 +105,9 @@ def sig2_model_for_fit(rs_obs, M_mean, rc, rt, k):
     sig2_interp = np.interp(rs_obs, rs_grid, sig2_grid)
     return sig2_interp
 
+# ==============================================================================
+# PEFILES RADIALES SUPERFICIALES
+# ==============================================================================
 def generate_surface_profile(Rs, rvs, num_bins=10, min_stars=3):
     # Definir los border de cada bin
     percentiles = np.linspace(0, 100, num_bins + 1)
@@ -115,7 +118,6 @@ def generate_surface_profile(Rs, rvs, num_bins=10, min_stars=3):
     Rs_mid = []
     num_stars = []
     num_density = []
-    sigs = []
     for i in range(num_bins):
         R_lo, R_hi = edges[i], edges[i + 1]
         R_mid = 0.5 * (R_lo + R_hi)
@@ -132,22 +134,6 @@ def generate_surface_profile(Rs, rvs, num_bins=10, min_stars=3):
         # Área del anillo
         area = np.pi * (R_hi**2 - R_lo**2)
 
-        # Calcular dispersión de velocidad observada
-        rvs_mask = ~np.isnan(rvs[in_bin])
-        rvs_valid = np.sum(rvs_mask)
-
-        if rvs_valid >= min_stars:
-            rvs_in_bin = rvs[in_bin]
-
-            v_mean = np.mean(rvs_in_bin)
-            sig2 = np.sum((rvs_in_bin - v_mean)**2) / (num_stars_in_bin - 1)
-            sig = np.sqrt(sig2)
-            
-            # Guardar dispersión de velocidades válidas
-            sigs.append(sig)
-        else:
-            sigs.append(np.nan)
-        
         # Guardar datos válidos
         Rs_mid.append(R_mid)
         num_stars.append(num_stars_in_bin)
@@ -157,17 +143,15 @@ def generate_surface_profile(Rs, rvs, num_bins=10, min_stars=3):
     Rs_mid = np.array(Rs_mid)
     num_stars = np.array(num_stars)
     num_density = np.array(num_density)
-    sigs = np.array(sigs)
 
     # Contruir dataframe con los resultados
     perfil_data = {
         'R_bin': Rs_mid,
         'num_estrellas': num_stars,
-        'densidad_num': num_density,
-        'sig_obs': sigs
+        'densidad_num': num_density
     }
 
-    return perfil_data
+    return pd.DataFrame(perfil_data)
 
 # ==============================================================================
 # PERFILES RADIALES ESPACIALES
@@ -262,8 +246,8 @@ def process_and_export_data(path_clusters, path_members):
     spatial_output = 'data/processed/perfiles_radiales/espaciales'
     os.makedirs(spatial_output, exist_ok=True)
 
-    # surface_output = 'data/processed/perfiles_radiales/superficiales'
-    # os.makedirs(surface_output, exist_ok=True)
+    surface_output = 'data/processed/perfiles_radiales/superficiales'
+    os.makedirs(surface_output, exist_ok=True)
 
     # Lista para almacenar los datos globales del cúmulo
     global_data = []
@@ -282,8 +266,7 @@ def process_and_export_data(path_clusters, path_members):
         ras = cluster_members['RA_ICRS'].values
         decs = cluster_members['DE_ICRS'].values
         Ms = cluster_members['Mass50'].values
-
-        rvs = cluster_members['RV']
+        rvs = cluster_members['RV'].values
 
         # -------------------- Ajuste perfil superficial -----------------------
         # Realizar proyección gnomónica
@@ -388,15 +371,20 @@ def process_and_export_data(path_clusters, path_members):
 
         # ------------------------ Perfil espacial -----------------------------
         # Generar el perfil radial 3D del cúmulo
-        perfil_df = generate_radial_profile(rs, Ms_v, num_bins_3d)
+        spatial_profile = generate_radial_profile(rs, Ms_v, num_bins_3d)
 
         # Exportar a un archivo CSV
         file_name = f"cluster_{id}.csv"
-        path_file = os.path.join(spatial_output, file_name)
-        perfil_df.to_csv(path_file, index=False)
+        spatial_path = os.path.join(spatial_output, file_name)
+        spatial_profile.to_csv(spatial_path, index=False)
 
-        # ---------------------- Perfil superficial ----------------------------
-        perfil_df = generate_surface_profile(Rs, rvs, num_bins_2d)
+        # ----------------------- Perfil superficial ---------------------------
+        # Generar el perfil radial 2D del cúmulo
+        surface_profile = generate_surface_profile(rs, rvs, num_bins_2d)
+
+        # Exportar a un archivo CSV
+        surface_path = os.path.join(surface_output, file_name)
+        surface_profile.to_csv(surface_path, index=False)
 
         id += 1
 
