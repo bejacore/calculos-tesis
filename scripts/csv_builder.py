@@ -118,6 +118,7 @@ def generate_surface_profile(Rs, rvs, num_bins=10, min_stars=3):
     Rs_mid = []
     num_stars = []
     num_density = []
+    sig_obs = []
     for i in range(num_bins):
         R_lo, R_hi = edges[i], edges[i + 1]
         R_mid = 0.5 * (R_lo + R_hi)
@@ -133,22 +134,37 @@ def generate_surface_profile(Rs, rvs, num_bins=10, min_stars=3):
         
         # Área del anillo
         area = np.pi * (R_hi**2 - R_lo**2)
+        
+        # Filtrar estrellas con VR válida dentro del bin
+        rvs_in_bin = rvs[in_bin]
+        valid_rv = rvs_in_bin[np.isfinite(rvs_in_bin)]
+
+        # Calcular dispersión solo si hay suficientes estrellas con RV
+        if len(valid_rv) >= min_stars:
+            v_mean = np.mean(valid_rv)
+            sig2 = np.sum((valid_rv - v_mean)**2) / (len(valid_rv) - 1)
+            sig = np.sqrt(sig2)
+        else:
+            sig = np.nan  # Bin válido en densidad, pero sin dato de sigma
 
         # Guardar datos válidos
         Rs_mid.append(R_mid)
         num_stars.append(num_stars_in_bin)
         num_density.append(num_stars_in_bin / area)
+        sig_obs.append(sig)
 
     # Convertir arrays a numpy arrays
     Rs_mid = np.array(Rs_mid)
     num_stars = np.array(num_stars)
     num_density = np.array(num_density)
+    sig_obs = np.array(sig_obs)
 
     # Contruir dataframe con los resultados
     perfil_data = {
         'R_bin': Rs_mid,
         'num_estrellas': num_stars,
-        'densidad_num': num_density
+        'densidad_num': num_density,
+        'sig_obs': sig_obs
     }
 
     return pd.DataFrame(perfil_data)
@@ -380,7 +396,7 @@ def process_and_export_data(path_clusters, path_members):
 
         # ----------------------- Perfil superficial ---------------------------
         # Generar el perfil radial 2D del cúmulo
-        surface_profile = generate_surface_profile(rs, rvs, num_bins_2d)
+        surface_profile = generate_surface_profile(Rs, rvs, num_bins_2d)
 
         # Exportar a un archivo CSV
         surface_path = os.path.join(surface_output, file_name)
