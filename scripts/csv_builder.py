@@ -172,7 +172,7 @@ def generate_surface_profile(Rs, rvs, num_bins=10, min_stars=3):
 # ==============================================================================
 # PERFILES RADIALES ESPACIALES
 # ==============================================================================
-def generate_radial_profile(rs, Ms, num_bins=10, min_stars=3):
+def generate_spatial_profile(rs, Ms, num_bins=10, min_stars=3):
     # Constante gravitacional G (pc * M_sun^-1 * (km/s)^2)
     G = 4.3009e-3 
 
@@ -387,7 +387,7 @@ def process_and_export_data(path_clusters, path_members):
 
         # ------------------------ Perfil espacial -----------------------------
         # Generar el perfil radial 3D del cúmulo
-        spatial_profile = generate_radial_profile(rs, Ms_v, num_bins_3d)
+        spatial_profile = generate_spatial_profile(rs, Ms_v, num_bins_3d)
 
         # Exportar a un archivo CSV
         file_name = f"cluster_{id}.csv"
