@@ -351,22 +351,22 @@ def process_and_export_data(path_clusters, path_members):
 
         # Parámetros de ajuste
         M_mean = np.mean(Ms_v)
-        M_min = np.min(Ms_v)
-        M_max = np.max(Ms_v)
 
         # Realizar ajuste
         popt_sig2, pcov_sig2 = curve_fit(
-            sig2_model_for_fit,
+            lambda rs_obs, rc, rt, k: sig2_model_for_fit(
+                rs_obs, M_mean, rc, rt, k
+                ),
             rs_mid_sig2, sig2_obs,
-            p0=[M_mean, rc_3d, rt_3d, k_3d],
+            p0=[rc_3d, rt_3d, k_3d],
             bounds=(
-                [M_min * 0.1, 0.01, 0.01, 1e-6], 
-                [M_max * 10, np.inf, np.inf, np.inf]
+                [0.01, 0.01, 1e-6], 
+                [np.inf, np.inf, np.inf]
                 ),
             maxfev=10000,
         )
 
-        M_mean_sig2, rc_sig2, rt_sig2, k_sig2 = popt_sig2
+        rc_sig2, rt_sig2, k_sig2 = popt_sig2
 
         # ----------------------- Datos globales -------------------------------
         global_data.append({
@@ -381,8 +381,8 @@ def process_and_export_data(path_clusters, path_members):
             'k_3d': k_3d,
             'rc_sig2': rc_sig2,
             'rt_sig2': rt_sig2,
-            'k_sig2': k_sig2,
-            'M_mean_sig2': M_mean_sig2
+            'k_sig2': k_sig2
+            # 'M_mean_sig2': M_mean_sig2
         })
 
         # ------------------------ Perfil espacial -----------------------------
